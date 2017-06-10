@@ -125,7 +125,6 @@ def get_deconv_generator(filters = 1024, regularisation = 1e-2, dropout_rate =0.
     generator.add(  LeakyReLU())
     generator.add(  Dropout(dropout_rate))
 
-    #generator.add(BatchNormalization())
     generator.add(Conv2DTranspose(int(filters/16),
                             kernel_size=(5, 5),
                             strides=(2, 2),
@@ -152,8 +151,7 @@ def get_deconv_generator(filters = 1024, regularisation = 1e-2, dropout_rate =0.
     generator.add(Conv2D(3,
                             kernel_size=(5, 5),
                             padding='same',
-                            activation='sigmoid',
-                            kernel_regularizer = reg))
+                            activation='sigmoid'))
     #print(generator.output_shape)
     #generator.compile(loss='categorical_crossentropy', metrics=['categorical_accuracy'], optimizer = Adam(2e-3, beta_1 = 0.5))
     return generator
@@ -203,8 +201,8 @@ def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dro
         discriminator.add(  Dropout(dropout_rate))
     discriminator.add(Conv2D(out_dim,(4,4), padding = 'valid', activation = 'sigmoid'))
     '''
-    discriminator.add(  Conv2D(1, (4, 4), padding='valid',kernel_regularizer = reg))
-    
+    discriminator.add(  Conv2D(out_dim, (4, 4), padding='valid',kernel_regularizer = reg))
+
 
     discriminator.add(Flatten())
     if out_dim ==2:
