@@ -63,7 +63,7 @@ def get_upSampling_generator(image_dim = 128 ,dropout_rate = 0.5, regularisation
 
 
     generator.add(  Conv2D( 3 , (3,3), padding = 'same', kernel_regularizer = reg))
-    generator.add(  Activation('sigmoid'))
+    generator.add(  Activation('tanh'))
 
     return generator
 
@@ -151,13 +151,13 @@ def get_deconv_generator(filters = 1024, regularisation = 1e-2, dropout_rate =0.
     generator.add(Conv2D(3,
                             kernel_size=(5, 5),
                             padding='same',
-                            activation='sigmoid'))
+                            activation='tanh'))
     #print(generator.output_shape)
     #generator.compile(loss='categorical_crossentropy', metrics=['categorical_accuracy'], optimizer = Adam(2e-3, beta_1 = 0.5))
     return generator
 
 
-def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dropout_rate = 0.5, out_dim = 2):
+def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dropout_rate = 0.5, batch_norm = False, out_dim = 2):
 
     reg = l2(regularisation)
     # dont use batch norm in first disc layer
@@ -165,24 +165,28 @@ def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dro
 
     discriminator.add(  Conv2D(int(filters/8), (5, 5), strides = (2,2),padding='same', input_shape = (3,input_dim,input_dim),kernel_regularizer = reg))
     #output_shape = (64,64)
-    discriminator.add(  BatchNormalization())
+    if batch_norm:
+        discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
 
     discriminator.add(  Conv2D(int(filters/4), (5, 5), strides = (2,2),padding='same',kernel_regularizer = reg))
     #output_shape = (32,32)
-    discriminator.add(  BatchNormalization())
+    if batch_norm:
+        discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
     discriminator.add(  Conv2D(int(filters/2), (5, 5), strides = (2,2),padding='same',kernel_regularizer = reg))
     #output_shape = (16,16)
-    discriminator.add(  BatchNormalization())
+    if batch_norm:
+        discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
 
     discriminator.add(  Conv2D(filters, (5, 5), strides = (2,2),padding='same',kernel_regularizer = reg))
     #output_shape = (16,16)
-    discriminator.add(  BatchNormalization())
+    if batch_norm:
+        discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
 
@@ -192,7 +196,7 @@ def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dro
     if input_dim == 128:
         discriminator.add(  Conv2D(filters, (5, 5), strides = (2,2),padding='same',kernel_regularizer = reg))
         #output_shape = (4,4)
-        discriminator.add(BatchNormalization())
+        discriminator.add(  BatchNormalization())
         discriminator.add(  LeakyReLU())
         discriminator.add(  Dropout(dropout_rate))
         discriminator.add(  Conv2D(filters, (5, 5), padding='same',kernel_regularizer = reg))
@@ -202,7 +206,6 @@ def get_discriminator(input_dim = 128, filters = 256, regularisation = 1e-4, dro
     discriminator.add(Conv2D(out_dim,(4,4), padding = 'valid', activation = 'sigmoid'))
     '''
     discriminator.add(  Conv2D(out_dim, (4, 4), padding='valid',kernel_regularizer = reg))
-
 
     discriminator.add(Flatten())
     if out_dim ==2:
