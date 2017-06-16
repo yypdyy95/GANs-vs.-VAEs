@@ -35,35 +35,38 @@ def visualize_weights(layer, max_filters = 16):
     fig.colorbar(im, ax=ax.ravel().tolist())
 
 '''
-get_weight_distribution:
-    visualize distribution of weights of a network
+get_weight_distributions:
+    visualize distribution of weights of Conv Layers network
 arguments:
     - network: network to get distribution from
     - bins: bins to calculate histogram
+
 returns:
     - numpy histogram: tuple
 '''
 
 
-def get_weight_distribution(network, bins = 500):
+def get_weight_distributions(network, bins = 500):
 
     #hist = np.zeros(bins)
     all_weights = []
+    hists = []
     for layer in network.layers:
-        if not "batch_normalization" in layer.get_config()['name']:
-        #print("\n\n")
+        if "conv" in layer.get_config()['name']: # don't take
             weights = layer.get_weights()
             if weights != []:
                 weights = np.reshape(weights[0], (-1))
-            all_weights= np.concatenate([all_weights, weights])#.append(weights)
+            hist = np.array(np.histogram(weights, bins = bins, normed = True))
+            out_shape = layer.output_shape
+            hists.append(hist)
 
-    all_weights = np.reshape(all_weights, (-1))
+            #all_weights= np.concatenate([all_weights, weights])#.append(weights)
+
     #print(all_weights.shape)
 
-    return np.histogram(all_weights, bins = bins)
+    return np.array(hists)#np.histogram(all_weights, bins = bins, normed = True)
 
-
-def get_model_name(discriminator, out_dim,  filters, dropout_rate, batch_norm = False, deconv =False):
+def get_model_name(discriminator, out_dim,  filters, filtersize, dropout_rate,dilation_rate, batch_norm = False, deconv =False):
     if discriminator:
         name = "dis"
         if batch_norm:
@@ -75,8 +78,9 @@ def get_model_name(discriminator, out_dim,  filters, dropout_rate, batch_norm = 
         else:
             name += "_up"
     name += "_f" + str(filters)
+    name += "_fs" + str(filtersize)
     name += "_o" + str(out_dim)
     name += "_d" + str(dropout_rate)
-
+    name += "_dil" + str(dilation_rate)
     name += ".h5"
     return name
