@@ -63,7 +63,7 @@ plotting parameters
 '''
 refresh_interval = 15       # interval for refreshing of plots
 save_images = True          # save generated images after every 50th iteration
-img_folder = "./imgs/"      # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
+img_folder = "./../imgs/"      # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
                             # folder where images will be saved in
 plot_weights = False        # plot weights of some conv layers during training
 
@@ -310,7 +310,7 @@ for it in range(iterations):
 	# save model every 1000 iterations
     if np.mod(it+1, 10) == 0:
     	#GAN.save("./networks/gan_cats.h5")
-    	discriminator.save("./networks/" + disc_name)
-    	generator.save("./networks/"+ gen_name)
+    	discriminator.save("./../networks/" + disc_name)
+    	generator.save("./../networks/"+ gen_name)
 
 plt.show()
