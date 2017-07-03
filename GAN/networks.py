@@ -103,10 +103,11 @@ def get_deconv_generator(filters = 1024, filtersize = 5,regularisation = 1e-2, d
 
 	'''
 	Project and Reshape: "just a matrix multiplication" according to DCGAN paper
+    except in their code this is not the case... use the version from their code here
 	'''
 	generator.add(  Dense(4*4*filters,  input_shape = [100]))
-	#generator.add(  BatchNormalization())
-	#generator.add(  Activation('relu'))
+	generator.add(  BatchNormalization())
+	generator.add(  Activation('relu'))
 	#generator.add(  LeakyReLU())
 	#generator.add(  Dropout(dropout_rate))
 	generator.add(  Reshape((filters, 4 , 4 )))
