@@ -39,8 +39,8 @@ out_dim = 1                 # output dimension for discriminator network
 d_l2_regularisation = 5e-4  # l2 kernel_regularizer for discriminator
 g_l2_regularisation = 5e-4  # l2 kernel_regularizer for generator
 deconv = True               # using strided Conv2DTranspose for Upsampling, else UpSampling2D
-opt_d = Adam(lr = 2e-5, beta_1 = 0.6)
-opt_g = Adam(lr = 2e-4, beta_1 = 0.6)
+opt_d = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
+opt_g = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
                             # optimizers
 
 '''
@@ -63,7 +63,7 @@ plotting parameters
 '''
 refresh_interval = 15       # interval for refreshing of plots
 save_images = True          # save generated images after every 50th iteration
-img_folder = "./../imgs/"      # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
+img_folder = "./imgs/"      # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
                             # folder where images will be saved in
 plot_weights = False        # plot weights of some conv layers during training
 

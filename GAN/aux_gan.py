@@ -31,19 +31,19 @@ image_dim  = 32             # image.shape = (3,image_dim, image_dim)
 '''
 Network parameters
 '''
-g_dropout_rate = 0.5        # dropout rate for generator
-d_dropout_rate = 0.3        # dropout rate for discriminator
-g_filters = 1024            # number of filters of first layer of generator
-d_filters = 1024            # number of filters of  of discriminator
-filtersize = 5              # size of Conv filters
+g_dropout_rate = 0.1        # dropout rate for generator
+d_dropout_rate = 0.1        # dropout rate for discriminator
+g_filters = 128             # number of filters of first layer of generator
+d_filters = 128             # number of filters of  of discriminator
+filtersize = 4              # size of Conv filters
 dilation_rate = 1           # dilation factor for dilated Connvolutions
 d_batchnorm = True          # use BatchNormalization in discriminator
 out_dim = 1                 # output dimension for discriminator network
 d_l2_regularisation = 5e-4  # l2 kernel_regularizer for discriminator
 g_l2_regularisation = 5e-4  # l2 kernel_regularizer for generator
 deconv = True               # using strided Conv2DTranspose for Upsampling, else UpSampling2D
-opt_d = Adam(lr = 2e-5, beta_1 = 0.7)
-opt_g = Adam(lr = 2e-4, beta_1 = 0.7)
+opt_d = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
+opt_g = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
                             # optimizers
 
 '''
@@ -53,7 +53,7 @@ Training parameters
 pretrain_eps = 0            # number of pretraining epochs for discriminator
 num_of_imgs = 32768         # number of images used for training
 batch_size = 128             # batch size for training
-iterations = 100            # number of iterations of training process
+iterations = 2500            # number of iterations of training process
 soft_labels = False         # using labels in range around 0/1 insteadof binary labels -> improves stability
 
 one_sided_sl = False        # using label smoothing only for real samples
@@ -90,7 +90,8 @@ def get_deconv_generator(filters = 1024, filtersize = 5,regularisation = 1e-2, d
 	'''
 
     generator.add(  Dense(4*4*filters,  input_shape = [100]))
-
+    generator.add(  BatchNormalization())
+    generator.add(  Activation('relu'))
     generator.add(  Reshape((filters, 4 , 4 )))
     generator.add(Conv2DTranspose(int(filters/2),
     						  kernel_size=(filtersize, filtersize),
@@ -148,17 +149,7 @@ def get_discriminator(input_dim = 32, depth = 1,  filters = 256,filtersize = 5, 
     					dilation_rate = dilation_rate,
     					input_shape = (3,input_dim,input_dim),
     					kernel_regularizer = reg))
-    #output_shape = (64,64)
-    if depth == 2:
-        discriminator.add(  Conv2D(int(filters/8),
-    						(filtersize, filtersize),
-    						padding='same',
-    						dilation_rate = dilation_rate,
-    						input_shape = (3,input_dim,input_dim),
-    						kernel_regularizer = reg))
-    	#output_shape = (64,64)
-
-
+    # 16x 16
     if batch_norm:
     	discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
@@ -170,20 +161,12 @@ def get_discriminator(input_dim = 32, depth = 1,  filters = 256,filtersize = 5, 
     					dilation_rate = dilation_rate,
     					padding='same',
     					kernel_regularizer = reg))
-    #output_shape = (32,32)
+    # 8 x 8
 
     if batch_norm:
     	discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
-
-    if depth == 2:
-        discriminator.add(  Conv2D(int(filters/4),
-    						(filtersize, filtersize),
-    						padding='same',
-    						dilation_rate = dilation_rate,
-    						input_shape = (3,input_dim,input_dim),
-    						kernel_regularizer = reg))
 
     discriminator.add(  Conv2D(int(filters/2),
     					(filtersize, filtersize),
@@ -191,15 +174,7 @@ def get_discriminator(input_dim = 32, depth = 1,  filters = 256,filtersize = 5, 
     					dilation_rate = dilation_rate,
     					padding='same',
     					kernel_regularizer = reg))
-
-    if depth == 2:
-        discriminator.add(  Conv2D(int(filters/4),
-    						(filtersize, filtersize),
-    						padding='same',
-    						dilation_rate = dilation_rate,
-    						input_shape = (3,input_dim,input_dim),
-    						kernel_regularizer = reg))
-
+    # 4 x 4
     if batch_norm:
     	discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
@@ -211,29 +186,26 @@ def get_discriminator(input_dim = 32, depth = 1,  filters = 256,filtersize = 5, 
     					padding='same',
     					dilation_rate = dilation_rate,
     					kernel_regularizer = reg))
-    if depth == 2:
-        discriminator.add(  Conv2D(int(filters),
-    						(filtersize, filtersize),
-    						padding='same',
-    						dilation_rate = dilation_rate,
-    						input_shape = (3,input_dim,input_dim),
-    						kernel_regularizer = reg))
-    #output_shape = (16,16)
+    # 2 x 2
     if batch_norm:
     	discriminator.add(  BatchNormalization())
     discriminator.add(  LeakyReLU())
     discriminator.add(  Dropout(dropout_rate))
     discriminator.add(  Flatten())
 
-    img = Input(shape = (3, 32, 32))
-    features = discriminator(img)
     '''
     determine if image is real, and in which class it belongs
     '''
+
+    img = Input(shape = (3, 32, 32))
+    features = discriminator(img)
+
     fake = Dense(1, activation='sigmoid')(features)
     aux = Dense(10, activation='softmax')(features)
 
-    return Model(input = img, output = [fake, aux])
+    model = Model(input = img, output = [fake, aux])
+
+    return model
 
 
 (images_train, y_train), (images_test, y_test) = cifar10.load_data()
@@ -305,9 +277,9 @@ initialize matplotlib windows
 
 fig1, ax1 = plt.subplots(2,2)
 ax1 = ax1.reshape(-1)
-fig2, ax2 = plt.subplots(4,4)
+fig2, ax2 = plt.subplots(4,5)
 ax2 = ax2.reshape(-1)
-fig2.set_size_inches(7,8)
+fig2.set_size_inches(10,9)
 fig1.set_size_inches(10,8)
 plt.subplots_adjust(left=0.04, bottom=0.04, right=0.96, top=0.96, wspace=0.05, hspace=0.05)
 if plot_weights:
@@ -359,6 +331,10 @@ class_names = {'0':"airplane", '1':"car", '2':"bird", '3':"cat", '4':"deer", '5'
 losses = {"d":[],"d_c": [] ,  "g":[], "g_c":[] }
 accuracies = {"d":[],"d_c": [] ,  "g":[], "g_c":[] }
 
+plot_noise = np.random.normal(mu, sigma, size=[batch_size, 100])
+plot_labels = range(batch_size)
+plot_labels = np.mod(plot_labels, 10)
+
 for it in range(iterations):
 
     print("iteration ", it+1, " of " , iterations)
@@ -378,7 +354,6 @@ for it in range(iterations):
 
         noise = np.random.normal(mu, sigma, size=[batch_size, 100])
         sampled_labels = np.random.randint(0, 10, (batch_size,1))
-        #sampled_labels = sampled_labels.reshape((-1, 1))
         images_fake = generator.predict([noise,sampled_labels])
 
         images_batch = images_train[i*batch_size:(i+1)*batch_size,:,:,:]
@@ -390,6 +365,7 @@ for it in range(iterations):
 
         lbls = np.concatenate((label_batch, sampled_labels), axis=0)
         aux_y = np.zeros((2*batch_size, 10))
+
         for i in range (2*batch_size):
             aux_y[i, lbls[i]] = 1
         for i in range(disc_train_eps):
@@ -442,14 +418,15 @@ for it in range(iterations):
         losses_plot_d_c = np.array(losses['d_c'])
         acc_plot_g_c = np.array(accuracies['g_c'])
         acc_plot_d_c = np.array(accuracies['d_c'])
+        images_plot = generator.predict([plot_noise,plot_labels])
 
-        images_fake = np.swapaxes(images_fake, 1,2)
-        images_fake = (np.swapaxes(images_fake, 3,2) + 1) * 127.5
+        images_plot = np.swapaxes(images_plot, 1,2)
+        images_plot = (np.swapaxes(images_plot, 3,2) + 1) * 127.5
 
-        for i in range(16):
+        for i in range(20):
             ax2[i].cla()
-            ax2[i].set_title(class_names[ str(sampled_labels[i,0])])
-            ax2[i].imshow(images_fake[i].astype(np.uint8) )
+            ax2[i].set_title(class_names[ str(plot_labels[i])])
+            ax2[i].imshow(images_plot[i].astype(np.uint8) )
             ax2[i].axis('off')
         ax1[0].cla()
         ax1[0].plot(acc_plot_d, label='discriminitive accuracy')
@@ -457,8 +434,9 @@ for it in range(iterations):
         ax1[0].legend()
 
         ax1[1].cla()
-        ax1[1].plot(losses_plot_d, label='discriminitive loss')
         ax1[1].plot(losses_plot_g, label='generative loss')
+        ax1[1].plot(losses_plot_d, label='discriminitive loss')
+
         ax1[1].legend()
 
         ax1[2].cla()
@@ -472,11 +450,11 @@ for it in range(iterations):
         ax1[3].legend()
         if save_images:
             fig2.savefig(img_folder + dataset + str(it) + ".png")
+            fig1.savefig(img_folder + "hist.png")
         plt.pause(0.0000001)
 
 	# save model every 1000 iterations
-    if np.mod(it+1, 1) == 0:
-    	#GAN.save("./networks/gan_cats.h5")
+    if np.mod(it+1, 25) == 0:
     	discriminator.save("./output/"+"cifar10" + disc_name)
     	generator.save("./output/"+ "cifar10"+gen_name)
 

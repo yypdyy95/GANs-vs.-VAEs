@@ -32,7 +32,7 @@ def load_data_set(name, maxitems=12500, image_dim = 64):
         import glob
         from scipy import misc
 
-        filenames = glob.glob("./datasets/"+ name +"/*.jpg")
+        filenames = glob.glob("./../datasets/"+ name +"/*.jpg")
         images = np.empty((maxitems, 3, image_dim, image_dim), dtype=np.uint8)
 
         for i in range(maxitems):
@@ -44,12 +44,12 @@ def load_data_set(name, maxitems=12500, image_dim = 64):
 
         return images
 
-    if (os.path.isfile("./datasets/" + name + ".pkl")):
+    if (os.path.isfile("./../datasets/" + name + ".pkl")):
         with open("./datasets/" + name + '.pkl', 'rb') as f:
             data = dill.load(f)
     else:
         data = internal_load_data(maxitems)
-        with open("./datasets/" + name + '.pkl', 'wb') as f:
+        with open("./../datasets/" + name + '.pkl', 'wb') as f:
             dill.dump(data, f)
 
     return data
