@@ -45,7 +45,7 @@ def load_data_set(name, maxitems=12500, image_dim = 64):
         return images
 
     if (os.path.isfile("./../datasets/" + name + ".pkl")):
-        with open("./datasets/" + name + '.pkl', 'rb') as f:
+        with open("./../datasets/" + name + '.pkl', 'rb') as f:
             data = dill.load(f)
     else:
         data = internal_load_data(maxitems)

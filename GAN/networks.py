@@ -19,6 +19,12 @@ def binary_accuracy_(y_true, y_pred):
     return K.mean(K.equal( K.round(y_true) , K.round(y_pred) ), axis=-1)
 
 '''
+wasserstein loss
+'''
+def wasserstein(y_true, y_pred):
+    return K.mean(y_true * y_pred)
+
+'''
 mean and min of predictions, just to keep track of training process
 '''
 
@@ -184,7 +190,7 @@ def get_deconv_generator(filters = 1024, filtersize = 5,regularisation = 1e-2, d
 	return generator
 
 
-def get_discriminator(input_dim = 128, depth = 1,  filters = 256,filtersize = 5, regularisation = 1e-4, dropout_rate = 0.5, dilation_rate = 1,batch_norm = False, out_dim = 2):
+def get_discriminator(input_dim = 128, depth = 1,  filters = 256,filtersize = 5, regularisation = 1e-4, dropout_rate = 0.5, dilation_rate = 1,batch_norm = False, out_dim = 2, wasserstein = False):
 
     reg = l2(regularisation)
 
@@ -291,10 +297,11 @@ def get_discriminator(input_dim = 128, depth = 1,  filters = 256,filtersize = 5,
     #discriminator.add(  Conv2D(out_dim, (4, 4), padding='valid',kernel_regularizer = reg))
 
     discriminator.add(Flatten())
-    if out_dim ==2:
-    	discriminator.add(  Dense(0))
-    	discriminator.add(  Activation("softmax"))
-    else:
-        discriminator.add(  Dense(1))
-        discriminator.add(  Activation("sigmoid"))#Dense(1, activation = "sigmoid"))
+    if not wasserstein:
+        if out_dim ==2:
+        	discriminator.add(  Dense(0))
+        	discriminator.add(  Activation("softmax"))
+        else:
+            discriminator.add(  Dense(1))
+            discriminator.add(  Activation("sigmoid"))#Dense(1, activation = "sigmoid"))
     return discriminator
