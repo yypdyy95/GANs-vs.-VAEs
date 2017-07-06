@@ -31,19 +31,19 @@ image_dim  = 32             # image.shape = (3,image_dim, image_dim)
 '''
 Network parameters
 '''
-g_dropout_rate = 0.1        # dropout rate for generator
-d_dropout_rate = 0.1        # dropout rate for discriminator
-g_filters = 128             # number of filters of first layer of generator
-d_filters = 128             # number of filters of  of discriminator
+g_dropout_rate = 0.3        # dropout rate for generator
+d_dropout_rate = 0.3        # dropout rate for discriminator
+g_filters = 256             # number of filters of first layer of generator
+d_filters = 256             # number of filters of  of discriminator
 filtersize = 4              # size of Conv filters
 dilation_rate = 1           # dilation factor for dilated Connvolutions
 d_batchnorm = True          # use BatchNormalization in discriminator
 out_dim = 1                 # output dimension for discriminator network
-d_l2_regularisation = 5e-4  # l2 kernel_regularizer for discriminator
-g_l2_regularisation = 5e-4  # l2 kernel_regularizer for generator
+d_l2_regularisation = 5e-3  # l2 kernel_regularizer for discriminator
+g_l2_regularisation = 5e-3  # l2 kernel_regularizer for generator
 deconv = True               # using strided Conv2DTranspose for Upsampling, else UpSampling2D
-opt_d = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
-opt_g = Adam(lr = 2e-4, beta_1 = 0.5, decay = 1e-7)
+opt_d = Adam(lr = 2e-4, beta_1 = 0.5)
+opt_g = Adam(lr = 2e-4, beta_1 = 0.5)
                             # optimizers
 
 '''
@@ -52,23 +52,23 @@ Training parameters
 
 pretrain_eps = 0            # number of pretraining epochs for discriminator
 num_of_imgs = 32768         # number of images used for training
-batch_size = 128             # batch size for training
-iterations = 2500            # number of iterations of training process
-soft_labels = False         # using labels in range around 0/1 insteadof binary labels -> improves stability
+batch_size = 128            # batch size for training
+iterations = 2500           # number of iterations of training process
+soft_labels = True          # using labels in range around 0/1 insteadof binary labels -> improves stability
 
-one_sided_sl = False        # using label smoothing only for real samples
+one_sided_sl = True        # using label smoothing only for real samples
 disc_train_eps = 1          # how often each network will be
 gen_train_epochs = 1        # trained in one epoch
-add_noise = False           # add noise to images, with decreasing magnitude
+add_noise = False            # add noise to images, with decreasing magnitude
 mu = 0                      # mean for noise input to generator
 sigma = 0.5                 # stddev for noise input
 
 '''
 plotting parameters
 '''
-refresh_interval = 1        # interval for refreshing of plots
+refresh_interval = 5        # interval for refreshing of plots
 save_images = True          # save generated images after every 50th iteration
-img_folder = "./output/"      # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
+img_folder = "./output/"    # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
                             # folder where images will be saved in
 plot_weights = False        # plot weights of some conv layers during training
 
@@ -227,8 +227,8 @@ else:
     acc = 'categorical_accuracy'
 
 
-disc_name ="cifar10" + util.get_model_name(discriminator = True, filters = d_filters, dropout_rate = d_dropout_rate,dilation_rate = dilation_rate, batch_norm = d_batchnorm, out_dim = out_dim, filtersize = filtersize)
-gen_name = "cifar10" + util.get_model_name(discriminator = False, deconv = deconv, filters = g_filters, dropout_rate = g_dropout_rate, dilation_rate = dilation_rate,out_dim = out_dim, filtersize = filtersize)
+disc_name ="cifar10" + util.get_model_name(dataset = dataset, discriminator = True, filters = d_filters, dropout_rate = d_dropout_rate,dilation_rate = dilation_rate, batch_norm = d_batchnorm, out_dim = out_dim, filtersize = filtersize)
+gen_name = "cifar10" + util.get_model_name(dataset = dataset, discriminator = False, deconv = deconv, filters = g_filters, dropout_rate = g_dropout_rate, dilation_rate = dilation_rate,out_dim = out_dim, filtersize = filtersize)
 
 
 if load and isfile("./networks/" + gen_name):
@@ -347,13 +347,19 @@ for it in range(iterations):
     batches = int(num_of_imgs/batch_size)
 
     progress_bar = Progbar(target=batches)
-    np.random.shuffle(images_train)
+    '''
+    shuffle images and labels the same way:
+    '''
+    p = np.random.permutation(num_of_imgs)
+    images_train = images_train[p]
+    y_train = y_train[p]
+    #np.random.shuffle(images_train)
 
     for i in range(batches):
         progress_bar.update(i)
 
         noise = np.random.normal(mu, sigma, size=[batch_size, 100])
-        sampled_labels = np.random.randint(0, 10, (batch_size,1))
+        sampled_labels = np.random.randint(0, 10, (1*batch_size,1))
         images_fake = generator.predict([noise,sampled_labels])
 
         images_batch = images_train[i*batch_size:(i+1)*batch_size,:,:,:]
@@ -363,11 +369,12 @@ for it in range(iterations):
             im_noise = np.exp( - it/10) * np.random.normal(0,0.3,size = images_batch.shape )
             images_batch += im_noise
 
-        lbls = np.concatenate((label_batch, sampled_labels), axis=0)
+        lbls = np.concatenate((label_batch, sampled_labels[:batch_size]), axis=0)
         aux_y = np.zeros((2*batch_size, 10))
 
         for i in range (2*batch_size):
             aux_y[i, lbls[i]] = 1
+
         for i in range(disc_train_eps):
             d_loss1 = discriminator.train_on_batch(images_batch,[y_r, aux_y[:batch_size]])
             d_loss2 = discriminator.train_on_batch(images_fake, [y_f, aux_y[batch_size:]])
@@ -376,7 +383,7 @@ for it in range(iterations):
 
         noise_tr = np.random.normal(mu, sigma, size=[batch_size, 100])
         for i in range(gen_train_epochs):
-            g_loss = GAN.train_on_batch([noise_tr,sampled_labels], [y_g[:batch_size], aux_y[batch_size:]])
+            g_loss = GAN.train_on_batch([noise_tr,sampled_labels], [y_g, aux_y])
         losses["g"].append(g_loss[0])
         accuracies["g"].append(g_loss[2])
         losses["g_c"].append(g_loss[1])
@@ -434,9 +441,8 @@ for it in range(iterations):
         ax1[0].legend()
 
         ax1[1].cla()
-        ax1[1].plot(losses_plot_g, label='generative loss')
         ax1[1].plot(losses_plot_d, label='discriminitive loss')
-
+        ax1[1].plot(losses_plot_g, label='generative loss')
         ax1[1].legend()
 
         ax1[2].cla()
