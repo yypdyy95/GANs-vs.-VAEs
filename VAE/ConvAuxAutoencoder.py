@@ -26,13 +26,17 @@ from keras.models import Model
 from keras import backend as K
 from keras import metrics
 from keras.datasets import mnist, cifar10
+from keras.layers.merge import Concatenate
 from keras.models import load_model
-import os
+from sklearn.preprocessing import OneHotEncoder
 
-dataset = "mnist"
+
+dataset = "celeba"
+
+keep_training = False
 
 def setup_hyperparameters():
-    global img_rows, img_cols, img_chns, filters, num_conv, latent_dim, intermediate_dim, epsilon_std, epochs, batch_size
+    global img_rows, img_cols, img_chns, filters, num_conv, latent_dim, intermediate_dim, epsilon_std, epochs, batch_size, nb_conditional_parameters
     if dataset == "celeba":
         # input image dimensions
         img_rows, img_cols, img_chns = 64, 64, 3
@@ -45,9 +49,10 @@ def setup_hyperparameters():
         intermediate_dim = 128
         epsilon_std = 1.0
         #number of epochs and batch size for the training of the VAE
-        epochs = 100
+        epochs = 200
         batch_size = 100
 
+        nb_conditional_parameters = 4
     elif dataset == "char74k":
         # input image dimensions
         img_rows, img_cols, img_chns = 64, 64, 3
@@ -63,6 +68,7 @@ def setup_hyperparameters():
         epochs = 100
         batch_size = 100
 
+        nb_conditional_parameters = 62
     elif dataset == "cifar10":
         # input image dimensions
         img_rows, img_cols, img_chns = 128, 128, 3
@@ -78,6 +84,7 @@ def setup_hyperparameters():
         epochs = 25
         batch_size = 100
 
+        nb_conditional_parameters = 10
     elif dataset == "mnist":
         # input image dimensions
         img_rows, img_cols, img_chns = 28, 28, 1
@@ -90,9 +97,10 @@ def setup_hyperparameters():
         intermediate_dim = 128
         epsilon_std = 1.0
         #number of epochs and batch size for the training of the VAE
-        epochs = 50
+        epochs = 5
         batch_size = 100
 
+        nb_conditional_parameters = 10
 setup_hyperparameters()
 
 if K.image_data_format() == 'channels_first':
@@ -117,11 +125,22 @@ def load_data():
     elif dataset == "char74k":
         x_data, y_data = load_char74k(image_dim=img_rows)
         x_train, x_test, y_train, y_test = train_test_split(x_data[:50000], y_data[:50000, 0]-1, test_size=0.1)
+        encoder = OneHotEncoder(nb_conditional_parameters)
+        y_train = encoder.fit_transform(y_train.reshape(-1, 1)).A
+        y_test = encoder.transform(y_test.reshape(-1, 1)).A
 
     elif dataset == "cifar10":
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+        encoder = OneHotEncoder(nb_conditional_parameters)
+        y_train = encoder.fit_transform(y_train.reshape(-1, 1)).A
+        y_test = encoder.transform(y_test.reshape(-1, 1)).A
+
     elif dataset == "mnist":
         (x_train, y_train), (x_test, y_test) = mnist.load_data()
+        encoder = OneHotEncoder(nb_conditional_parameters)
+        y_train = encoder.fit_transform(y_train.reshape(-1, 1)).A
+        y_test = encoder.transform(y_test.reshape(-1, 1)).A
+
 
     x_train = x_train.astype('float32') / 255.
     x_train = x_train.reshape((x_train.shape[0],) + original_img_size)
@@ -129,10 +148,9 @@ def load_data():
     x_test = x_test.reshape((x_test.shape[0],) + original_img_size)
 load_data()
 
-
-
 def build_train():
-    x = Input(batch_shape=(batch_size,) + original_img_size)
+    x = Input(batch_shape=(batch_size,) + original_img_size, name="image_input")
+    conditional = Input(batch_shape=(batch_size, nb_conditional_parameters), name="conditional_input")
     conv_1 = Conv2D(img_chns, kernel_size=(2, 2), padding='same', activation='relu')(x)
     conv_2 = Conv2D(filters, kernel_size=(2, 2), padding='same', activation='relu', strides=(2, 2))(conv_1)
     conv_3 = Conv2D(filters, kernel_size=num_conv, padding='same', activation='relu', strides=1)(conv_2)
@@ -140,9 +158,8 @@ def build_train():
     flat = Flatten()(conv_4)
     hidden = Dense(intermediate_dim, activation='relu')(flat)
 
-    z_mean = Dense(latent_dim)(hidden)
-    z_log_var = Dense(latent_dim)(hidden)
-
+    z_mean = Dense(latent_dim, name="z_mean")(hidden)
+    z_log_var = Dense(latent_dim, name="z_log_var")(hidden)
 
     def sampling(args):
         z_mean, z_log_var = args
@@ -153,31 +170,36 @@ def build_train():
     # so you could write `Lambda(sampling)([z_mean, z_log_var])`
     z = Lambda(sampling, output_shape=(latent_dim,), name="z")([z_mean, z_log_var])
 
+    #merge the latend variables (z) and the conditional input
+    merged = Concatenate()([z, conditional])
 
     # we instantiate these layers separately so as to reuse them later
-    decoder_hid = Dense(intermediate_dim, activation='relu')
-    decoder_upsample = Dense(filters * img_rows//2 * img_cols//2, activation='relu')
+    decoder_hid = Dense(intermediate_dim, activation='relu', name="decoder_hid")
+    decoder_upsample = Dense(filters * img_rows//2 * img_cols//2, activation='relu', name="decoder_upsample")
 
     if K.image_data_format() == 'channels_first':
         output_shape = (batch_size, filters, img_rows//2, img_cols//2)
     else:
         output_shape = (batch_size, img_rows//2, img_cols//2, filters)
 
-    decoder_reshape = Reshape(output_shape[1:])
-    decoder_deconv_1 = Conv2DTranspose(filters, kernel_size=num_conv, padding='same', strides=1, activation='relu')
-    decoder_deconv_2 = Conv2DTranspose(filters, num_conv, padding='same', strides=1, activation='relu')
+    decoder_reshape = Reshape(output_shape[1:], name="decoder_reshape")
+    decoder_deconv_1 = Conv2DTranspose(filters, kernel_size=num_conv, padding='same', strides=1, activation='relu', name="decoder_deconv_1")
+    decoder_deconv_2 = Conv2DTranspose(filters, num_conv, padding='same', strides=1, activation='relu', name="decoder_deconv_2")
+    if K.image_data_format() == 'channels_first':
+        output_shape = (batch_size, filters, 29, 29)
+    else:
+        output_shape = (batch_size, 29, 29, filters)
 
-    decoder_deconv_3_upsamp = Conv2DTranspose(filters, kernel_size=(3, 3), strides=(2, 2), padding='valid', activation='relu')
-    decoder_mean_squash = Conv2D(img_chns, kernel_size=2, padding='valid', activation='sigmoid')
+    decoder_deconv_3_upsamp = Conv2DTranspose(filters, kernel_size=(3, 3), strides=(2, 2), padding='valid', activation='relu', name="decoder_deconv_3_upsamp")
+    decoder_mean_squash = Conv2D(img_chns, kernel_size=2, padding='valid', activation='sigmoid', name="decoder_mean_squash")
 
-    hid_decoded = decoder_hid(z)
+    hid_decoded = decoder_hid(merged)
     up_decoded = decoder_upsample(hid_decoded)
     reshape_decoded = decoder_reshape(up_decoded)
     deconv_1_decoded = decoder_deconv_1(reshape_decoded)
     deconv_2_decoded = decoder_deconv_2(deconv_1_decoded)
     x_decoded_relu = decoder_deconv_3_upsamp(deconv_2_decoded)
     x_decoded_mean_squash = decoder_mean_squash(x_decoded_relu)
-
 
     # Custom loss layer
     class CustomVariationalLayer(Layer):
@@ -201,60 +223,92 @@ def build_train():
             return x
 
     y = CustomVariationalLayer()([x, x_decoded_mean_squash])
-    vae = Model(inputs=[x], outputs=[y])
+    vae = Model(inputs=[x, conditional], outputs=[y])
     vae.compile(optimizer='rmsprop', loss=None)
     vae.summary()
 
-    vae.fit([x_train,], shuffle=True, epochs=epochs, batch_size=batch_size, validation_data=([x_test], x_test), verbose=2)
-    vae.save("./output/vae_uncon_{0}_{1}.h5".format(dataset, latent_dim))
+    vae.fit([x_train, y_train], shuffle=True, epochs=epochs, batch_size=batch_size, validation_data=([x_test, y_test], x_test), verbose=2)
+    vae.save("./output/vae_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs))
 
     # build a model to project inputs on the latent space
     encoder = Model(x, z_mean)
-    encoder.save("./output/encoder_uncon_{0}_{1}.h5".format(dataset, latent_dim))
+    encoder.save("./output/encoder_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs))
 
     # build a digit generator that can sample from the learned distribution
-    decoder_input = Input(shape=(latent_dim,))
-    _hid_decoded = decoder_hid(decoder_input)
-    _up_decoded = decoder_upsample(_hid_decoded)
-    _reshape_decoded = decoder_reshape(_up_decoded)
-    _deconv_1_decoded = decoder_deconv_1(_reshape_decoded)
-    _deconv_2_decoded = decoder_deconv_2(_deconv_1_decoded)
-    _x_decoded_relu = decoder_deconv_3_upsamp(_deconv_2_decoded)
-    _x_decoded_mean_squash = decoder_mean_squash(_x_decoded_relu)
-    generator = Model(decoder_input, _x_decoded_mean_squash)
+    decoder_input = Input(shape=(latent_dim,), name="decoder_input")
+    decoder_conditional = Input(shape=(nb_conditional_parameters,), name="decoder_conditional")
+    merged_decoder_input = Concatenate()([decoder_input, decoder_conditional])
+    decoder_hid_decoded = decoder_hid(merged_decoder_input)
+    decoder_up_decoded = decoder_upsample(decoder_hid_decoded)
+    decoder_reshape_decoded = decoder_reshape(decoder_up_decoded)
+    decoder_deconv_1_decoded = decoder_deconv_1(decoder_reshape_decoded)
+    decoder_deconv_2_decoded = decoder_deconv_2(decoder_deconv_1_decoded)
+    decoder_x_decoded_relu = decoder_deconv_3_upsamp(decoder_deconv_2_decoded)
+    decoder_x_decoded_mean_squash = decoder_mean_squash(decoder_x_decoded_relu)
+    generator = Model([decoder_input, decoder_conditional], decoder_x_decoded_mean_squash)
 
-    generator.save("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim))
+    generator.save("./output/generator_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs))
 
     return vae, generator
 
-if not os.path.isfile("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim)):
+if not os.path.isfile("./output/generator_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs)):
     _, generator = build_train()
 else:
     print("loading model...")
-    generator = load_model("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim))
-    vae = load_model("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim))
+    generator = load_model("./output/generator_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs))
+    #vae = load_model("./output/vae_{0}_{1}.h5".format(dataset, latent_dim))
+    encoder = load_model("./output/encoder_{0}_{1}_{2}.h5".format(dataset, latent_dim, epochs))
+    print("models loaded")
 
-nb_rows = 50
-nb_cols = 50
+    if keep_training:
+        print("keep_training is not supported.")
+        """
+        print("starting training...")
+        vae.fit([x_train, y_train], shuffle=True, epochs=epochs, batch_size=batch_size, validation_data=([x_test, y_test], x_test), verbose=2)
+        vae.save("./output/vae_{0}_{1}.h5".format(dataset, latent_dim))
 
-# linearly spaced coordinates on the unit square were transformed through the inverse CDF (ppf) of the Gaussian
-# to produce values of the latent variables z, since the prior of the latent space is Gaussian
-grid_x = norm.ppf(np.linspace(0.05, 0.95, nb_cols))
-grid_y = norm.ppf(np.linspace(0.05, 0.95, nb_rows))
+        x = vae.get_layer("image_input")
+        z_mean = vae.get_layer("z_mean")
+        encoder = Model(x, z_mean)
+        encoder.save("./output/encoder_{0}_{1}.h5".format(dataset, latent_dim))
 
-figure = np.zeros((nb_rows * img_rows, nb_cols * img_cols, img_chns))
+        decoder_input = Input(shape=(latent_dim,), name="decoder_input")
+        decoder_conditional = Input(shape=(nb_conditional_parameters,), name="decoder_conditional")
+        merged_decoder_input = Concatenate()([decoder_input, decoder_conditional])
 
-for i, yi in enumerate(grid_x):
-    for j, xi in enumerate(grid_y):
-        z_sample = np.array([[xi, yi]])
-        z_sample = np.tile(z_sample, batch_size).reshape(batch_size, latent_dim)
-        x_decoded = generator.predict(z_sample, batch_size=batch_size)
-        img = x_decoded[0].reshape(img_rows, img_cols, img_chns)
-        figure[i * img_cols: (i + 1) * img_cols,
-               j * img_rows: (j + 1) * img_rows] = img
+        decoder_hid_decoded = vae.get_layer("decoder_hid")(merged_decoder_input)
+        decoder_up_decoded = vae.get_layer("decoder_upsample")(decoder_hid_decoded)
+        decoder_reshape_decoded = vae.get_layer("decoder_reshape")(decoder_up_decoded)
+        decoder_deconv_1_decoded = vae.get_layer("decoder_deconv_1")(decoder_reshape_decoded)
+        decoder_deconv_2_decoded = vae.get_layer("decoder_deconv_2")(decoder_deconv_1_decoded)
+        decoder_x_decoded_relu = vae.get_layer("decoder_deconv_3_upsamp")(decoder_deconv_2_decoded)
+        decoder_x_decoded_mean_squash = vae.get_layer("decoder_mean_squash")(decoder_x_decoded_relu)
+        generator = Model([decoder_input, decoder_conditional], decoder_x_decoded_mean_squash)
 
-if img_chns == 1:
-    figure = figure[:, :, 0]
+        generator.save("./output/generator_{0}_{1}.h5".format(dataset, latent_dim))
+        print("training finished")
+        """
 
-import scipy.misc
-scipy.misc.imsave('./output/result_mnist_uncond.jpg', figure)
+
+nb_rows = 15
+nb_cols = 15
+
+#randomly sample the latent variable space
+grid = np.array([norm.ppf(np.random.rand(latent_dim)) for i in range(nb_rows*nb_cols) ] )
+
+for j in [1]:
+    for n, ind in enumerate([[], [0], [1], [2], [3], [0, 1], [0, 1, 2]]):
+        figure = np.zeros((img_rows * nb_rows, img_cols * nb_cols, img_chns))
+        for i, x in enumerate(grid):
+            z_sample = np.array([x])
+            z_sample = np.tile(z_sample, batch_size).reshape(batch_size, latent_dim)
+            conditional_sample = np.zeros((batch_size, nb_conditional_parameters))
+            conditional_sample[:, ind] = j
+            x_decoded = generator.predict([z_sample, conditional_sample], batch_size=batch_size)
+            img = x_decoded[0].reshape(img_rows, img_cols, img_chns)
+            figure[i%nb_rows * img_rows: (i%nb_rows + 1) * img_rows, i//nb_cols * img_cols: ( i//nb_cols + 1 ) * img_cols] = img
+
+        if img_chns == 1:
+            figure = figure[:, :, 0]
+        import scipy.misc
+        scipy.misc.imsave('./output/result_{0}_{1}.jpg'.format(n, j), figure)
