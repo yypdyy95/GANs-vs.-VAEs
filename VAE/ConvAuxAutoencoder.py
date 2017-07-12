@@ -28,8 +28,10 @@ from keras import metrics
 from keras.datasets import mnist, cifar10
 from keras.layers.merge import Concatenate
 from keras.models import load_model
+from keras.layers.normalization import BatchNormalization
 from sklearn.preprocessing import OneHotEncoder
 
+import scipy.misc
 
 dataset = "celeba"
 
@@ -46,10 +48,10 @@ def setup_hyperparameters():
         num_conv = 3
         #number of latent variables
         latent_dim = 300
-        intermediate_dim = 128
-        epsilon_std = 1.0
+        intermediate_dim = 100
+        epsilon_std = 2.0
         #number of epochs and batch size for the training of the VAE
-        epochs = 200
+        epochs = 400
         batch_size = 100
 
         nb_conditional_parameters = 4
@@ -65,7 +67,7 @@ def setup_hyperparameters():
         intermediate_dim = 128
         epsilon_std = 1.0
         #number of epochs and batch size for the training of the VAE
-        epochs = 100
+        epochs = 200
         batch_size = 100
 
         nb_conditional_parameters = 62
@@ -185,10 +187,6 @@ def build_train():
     decoder_reshape = Reshape(output_shape[1:], name="decoder_reshape")
     decoder_deconv_1 = Conv2DTranspose(filters, kernel_size=num_conv, padding='same', strides=1, activation='relu', name="decoder_deconv_1")
     decoder_deconv_2 = Conv2DTranspose(filters, num_conv, padding='same', strides=1, activation='relu', name="decoder_deconv_2")
-    if K.image_data_format() == 'channels_first':
-        output_shape = (batch_size, filters, 29, 29)
-    else:
-        output_shape = (batch_size, 29, 29, filters)
 
     decoder_deconv_3_upsamp = Conv2DTranspose(filters, kernel_size=(3, 3), strides=(2, 2), padding='valid', activation='relu', name="decoder_deconv_3_upsamp")
     decoder_mean_squash = Conv2D(img_chns, kernel_size=2, padding='valid', activation='sigmoid', name="decoder_mean_squash")
@@ -306,9 +304,9 @@ for j in [1]:
             conditional_sample[:, ind] = j
             x_decoded = generator.predict([z_sample, conditional_sample], batch_size=batch_size)
             img = x_decoded[0].reshape(img_rows, img_cols, img_chns)
-            figure[i%nb_rows * img_rows: (i%nb_rows + 1) * img_rows, i//nb_cols * img_cols: ( i//nb_cols + 1 ) * img_cols] = img
+            figure[i%nb_rows * img_rows: (i%nb_rows + 1) * img_rows, i//nb_cols * img_cols: (i//nb_cols + 1) * img_cols] = img
 
         if img_chns == 1:
             figure = figure[:, :, 0]
-        import scipy.misc
+
         scipy.misc.imsave('./output/result_{0}_{1}.jpg'.format(n, j), figure)
