@@ -83,6 +83,9 @@ def load_data_set_classes(name, class_names, maxitems=12500, image_dim = 64, cf=
             for n, class_name in enumerate(class_names):
                 classes[i, n] = csv.loc[csv['name'] == os.path.basename(filenames[i])][class_name]
 
+            if i % 100 == 0:
+                print(i)
+
         return images, classes
 
     if (os.path.isfile("./../datasets/" + name + ".pkl")):
