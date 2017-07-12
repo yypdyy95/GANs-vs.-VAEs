@@ -9,6 +9,8 @@ from keras.layers.merge import multiply
 from keras.optimizers import Adam, RMSprop
 from keras.utils.generic_utils import Progbar
 
+import matplotlib
+matplotlib.use("ps")
 import matplotlib.pyplot as plt
 from PIL import Image
 
@@ -19,16 +21,16 @@ from keras.datasets import cifar10, mnist
 import argparse
 import sys
 
-np.random.seed(1234)
+np.random.seed(1337)
 
 
-def build_generator(latent_size = 100, depth = 256, dropout = 0.4, batch_norm = False, img_size = 28):
+def build_generator(latent_size = 100, depth = 64, dropout_rate = 0.0, batch_norm = False, img_size = 28):
     """build generator model
 
     # Arguments
         latent_size: number of latent variables = noise from which img are gen.
         depth: depth of data before 1st UpSampling
-        dropout: applied dropout rate
+        dropout_rate: applied dropout_rate
         batch_norm: apply Batch Normalization after each layer
         img_size: number of pixel in one row/col
 
@@ -46,7 +48,7 @@ def build_generator(latent_size = 100, depth = 256, dropout = 0.4, batch_norm = 
         gen.add(BatchNormalization(momentum=0.9))
     gen.add(Activation('relu'))
     gen.add(Reshape((dim, dim, depth)))
-    gen.add(Dropout(dropout))
+    gen.add(Dropout(dropout_rate))
 
     gen.add(UpSampling2D())
     gen.add(Conv2DTranspose(int(depth/2), 5, padding='same'))
@@ -82,12 +84,12 @@ def build_generator(latent_size = 100, depth = 256, dropout = 0.4, batch_norm = 
     gen.summary()
     return gen
 
-def build_discriminator(depth = 256, dropout = 0.4, batch_norm = False, img_size = 28):
+def build_discriminator(depth = 32, dropout_rate = 0.0, batch_norm = False, img_size = 28, lReLU_alpha = 0.3):
     """build discriminator Model
 
     # Arguments
         depth: depth of data before 1st UpSampling
-        dropout: applied dropout rate
+        dropout_rate: applied dropout_rate
         batch_norm: apply Batch Normalization after each layer
         img_size: number of pixel in one row/col
 
@@ -99,32 +101,30 @@ def build_discriminator(depth = 256, dropout = 0.4, batch_norm = False, img_size
     input_shape = (img_size, img_size, channel)
     dis.add(Conv2D(depth*1, 4, strides=2, padding='same',
         input_shape=input_shape))
-    dis.add(LeakyReLU(alpha=0.2))
-    dis.add(Dropout(dropout))
+    dis.add(LeakyReLU(alpha=lReLU_alpha))
+    dis.add(Dropout(dropout_rate))
 
     dis.add(Conv2D(depth*2, 4, strides=2, padding='same'))
     if batch_norm:
         dis.add(BatchNormalization())
-    dis.add(LeakyReLU(alpha=0.2))
-    dis.add(Dropout(dropout))
+    dis.add(LeakyReLU(alpha=lReLU_alpha))
+    dis.add(Dropout(dropout_rate))
 
     dis.add(Conv2D(depth*4, 4, strides=2, padding='same'))
     if batch_norm:
         dis.add(BatchNormalization())
-    dis.add(LeakyReLU(alpha=0.2))
-    dis.add(Dropout(dropout))
+    dis.add(LeakyReLU(alpha=lReLU_alpha))
+    dis.add(Dropout(dropout_rate))
 
     dis.add(Conv2D(depth*8, 4, strides=2, padding='same'))
     if batch_norm:
         dis.add(BatchNormalization())
-    dis.add(LeakyReLU(alpha=0.2))
-    dis.add(Dropout(dropout))
+    dis.add(LeakyReLU(alpha=lReLU_alpha))
+    dis.add(Dropout(dropout_rate))
 
     # Out: 1-dim probability
     # TODO: Replace fc layer
     dis.add(Flatten())
-    dis.add(Dense(1))
-    dis.add(Activation('sigmoid'))
 
     img = Input(shape=(28, 28, 1))
     features = dis(img)
@@ -179,10 +179,13 @@ if __name__ == '__main__':
     adam_beta_1 = 0.5
 
     # training
-    batch_size = 128
+    batch_size = 256
     epochs = 50
     noise_mu = 0
     noise_sigma = 0.5
+
+    # plotting
+    plot_same_noise = True
 
     """ Data Preprocessing """
 
@@ -195,8 +198,8 @@ if __name__ == '__main__':
             img_size, 1).astype(np.float32)
         x_train = (x_train-127.5)/127.5
         num_train = x_train.shape[0]
-        print("Input_shape = {}, max_value = {}".format(x_train.shape,
-            np.amax(x_train)))
+        print("Input_shape = {}, max_value = {}, min_value = {}".format(x_train.shape,
+            np.amax(x_train), np.amin(x_train)))
 
     elif dataset == "CIFAR":
         print("Training on CIFAR-10 dataset")
@@ -216,12 +219,14 @@ if __name__ == '__main__':
     """ Build Model """
 
     # build discriminator
-    discriminator = build_discriminator(img_size = img_size, depth=128)
+    discriminator = build_discriminator(img_size = img_size, depth=32,
+        dropout_rate = 0.3)
     discriminator.compile(optimizer=Adam(lr=adam_lr, beta_1=adam_beta_1),
         loss=['binary_crossentropy', 'sparse_categorical_crossentropy'])
 
     # build generator
-    generator = build_generator(latent_size= latent_size, depth = 64, img_size = img_size)
+    generator = build_generator(latent_size= latent_size, depth = 32,
+        img_size = img_size, dropout_rate = 0.3)
     generator.compile(optimizer=Adam(lr= adam_lr, beta_1 = adam_beta_1),
         loss = 'binary_crossentropy')
 
@@ -239,10 +244,19 @@ if __name__ == '__main__':
     combined.compile(optimizer=Adam(lr = adam_lr, beta_1=adam_beta_1),
         loss = ['binary_crossentropy', 'sparse_categorical_crossentropy'])
 
+    """ initialize matplotlib windows """
+
+    if visualize:
+        fig1, ax1 = plt.subplots()
+        fig1.set_size_inches(10, 6)
 
     """ Train Model """
 
-    train_hist = {}
+    train_hist = {'gen':[], 'dis':[], 'gen_batch':[], 'dis_batch':[]}
+
+    # generate latent vector for plotting after each epoch:
+    if plot_same_noise:
+        noise_to_plot = np.random.uniform(-1, 1, (100, latent_size))
 
     for epoch in range(epochs):
         print("Epoch {} of {}".format(epoch+1, epochs))
@@ -301,35 +315,52 @@ if __name__ == '__main__':
 
         train_hist['gen'].append(generator_train_loss)
         train_hist['dis'].append(discriminator_train_loss)
+        train_hist['gen_batch'].extend(epoch_gen_loss)
+        train_hist['dis_batch'].extend(epoch_dis_loss)
 
+        # TODO: Add to txt file
         np.savetxt("/output/gen_loss.txt", generator_train_loss)
         np.savetxt("/output/dis_loss.txt", discriminator_train_loss)
 
-        print('{0:<22s} | {1:4s} | {2:15s} | {3:5s}'.format(
+        # plot loss of all batches:
+        if visualize:
+            ax1.cla()
+            print(generator.metrics_names, discriminator.metrics_names)
+            print("shape train_hist['dis_batch']: {}".format(np.array(train_hist['dis_batch']).shape))
+            ax1.plot(np.array(train_hist['dis_batch'])[:,0], label="dis_loss")
+            ax1.plot(np.array(train_hist['gen_batch'])[:, 0], label="gen_loss")
+            ax1.legend()
+            fig1.savefig("/output/train_hist_epoch_{0:03d}.png".format(epoch))
+            plt.show()
+
+        print('\n{0:<22s} | {1:4s} | {2:15s} | {3:5s}'.format(
             'component', *discriminator.metrics_names))
         print('-' * 65)
 
         ROW_FMT = '{0:<22s} | {1:<4.2f} | {2:<15.2f} | {3:<5.2f}'
         print(ROW_FMT.format('generator (train)',
-                             *train_hist['generator'][-1]))
+                             *train_hist['gen'][-1]))
         print(ROW_FMT.format('discriminator (train)',
-                             *train_hist['discriminator'][-1]))
+                             *train_hist['dis'][-1]))
 
 
-        """
+
         # save weights every epoch
-        generator.save_weights(
-            'params_generator_epoch_{0:03d}.hdf5'.format(epoch), True)
-        discriminator.save_weights(
-            'params_discriminator_epoch_{0:03d}.hdf5'.format(epoch), True)
-        """
+        if epoch >= 20 and epoch%5 == 0:
+            generator.save_weights(
+                '/output/params_generator_epoch_{0:03d}.hdf5'.format(epoch))
+            discriminator.save_weights(
+                '/output/params_discriminator_epoch_{0:03d}.hdf5'.format(epoch))
+
 
         # generate some digits to display
-        noise = np.random.uniform(-1, 1, (100, latent_size))
+        if plot_same_noise:
+            noise = noise_to_plot
+        else:
+            noise = np.random.uniform(-1, 1, (100, latent_size))
 
         sampled_labels = np.array([
-            [i] * 10 for i in range(10)
-        ]).reshape(-1, 1)
+            [i] * 10 for i in range(10)]).reshape(-1, 1)
 
         # get a batch to display
         generated_images = generator.predict(
@@ -344,10 +375,10 @@ if __name__ == '__main__':
             '/output/plot_epoch_{0:03d}_generated.png'.format(epoch))
 
     # save models
-    generator.save_model("/output/gen_aux_mnist.hdf5")
-    discriminator.save_model("/output/dis_aux_mnist.hdf5")
+    generator.save("/output/gen_aux_mnist.hdf5")
+    discriminator.save("/output/dis_aux_mnist.hdf5")
 
-    with open('test.txt', 'w') as file:
+    with open('train_hist.txt', 'wb') as file:
         file.write(pickle.dumps(train_hist))
 
     """pickle.dump({'train': train_hist, 'test': test_history},
