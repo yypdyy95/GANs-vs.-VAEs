@@ -6,8 +6,7 @@ import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten, Reshape
 from keras.layers import Conv2D, Conv2DTranspose, UpSampling2D
-from keras.layers import LeakyReLU, Dropout, BatchNormalization
-from keras.layers import BatchNormalization
+from keras.layers import LeakyReLU, Dropout, BatchNormalization, Input
 from keras.optimizers import Adam, RMSprop
 
 import matplotlib.pyplot as plt
@@ -19,7 +18,7 @@ import argparse
 import sys
 
 class DCGAN_model(object):
-    def __init__(self, img_rows=32, img_cols=32, channel=3, upsample = False):
+    def __init__(self, img_rows=32, img_cols=32, channel=3, upsample = False, auxilary = False):
 
         self.img_rows = img_rows
         self.img_cols = img_cols
@@ -33,36 +32,48 @@ class DCGAN_model(object):
     def discriminator(self):
         if self.D:
             return self.D
-        self.D = Sequential()
+        self.dis = Sequential()
         depth = 32 #64
         dropout = 0.4
         # In: 32 x 32 x 3, depth = 1
         input_shape = (self.img_rows, self.img_cols, self.channel)
-        self.D.add(Conv2D(depth*1, 4, strides=2, padding='same',
+        self.dis.add(Conv2D(depth*1, 4, strides=2, padding='same',
             input_shape=input_shape))
-        self.D.add(LeakyReLU(alpha=0.2))
-        #self.D.add(Dropout(dropout))
+        self.dis.add(LeakyReLU(alpha=0.2))
+        #self.dis.add(Dropout(dropout))
 
-        self.D.add(Conv2D(depth*2, 4, strides=2, padding='same'))
-        self.D.add(BatchNormalization())
-        self.D.add(LeakyReLU(alpha=0.2))
-        #self.D.add(Dropout(dropout))
+        self.dis.add(Conv2D(depth*2, 4, strides=2, padding='same'))
+        self.dis.add(BatchNormalization())
+        self.dis.add(LeakyReLU(alpha=0.2))
+        #self.dis.add(Dropout(dropout))
 
-        self.D.add(Conv2D(depth*4, 4, strides=2, padding='same'))
-        self.D.add(BatchNormalization())
-        self.D.add(LeakyReLU(alpha=0.2))
-        #self.D.add(Dropout(dropout))
+        self.dis.add(Conv2D(depth*4, 4, strides=2, padding='same'))
+        self.dis.add(BatchNormalization())
+        self.dis.add(LeakyReLU(alpha=0.2))
+        #self.dis.add(Dropout(dropout))
 
-        self.D.add(Conv2D(depth*8, 4, strides=2, padding='same'))
-        self.D.add(BatchNormalization())
-        self.D.add(LeakyReLU(alpha=0.2))
-        #self.D.add(Dropout(dropout))
+        self.dis.add(Conv2D(depth*8, 4, strides=2, padding='same'))
+        self.dis.add(BatchNormalization())
+        self.dis.add(LeakyReLU(alpha=0.2))
+        #self.dis.add(Dropout(dropout))
 
         # Out: 1-dim probability
         # TODO: Replace fc layer
-        self.D.add(Flatten())
-        self.D.add(Dense(1))
-        self.D.add(Activation('sigmoid'))
+        self.dis.add(Flatten())
+        self.dis.add(Dense(1))
+        self.dis.add(Activation('sigmoid'))
+
+        if auxilary:
+            image = Input(shape=(1, 28, 28))
+            features = dis(image)
+
+            fake = Dense(1, activation='sigmoid')(features)
+            aux = Dense(10, activation='softmax')(features)
+
+            self.D = Model(input = img, output = [fake, aux])
+
+        else:
+            self.D = self.dis
 
         self.D.summary()
         return self.D
@@ -105,37 +116,51 @@ class DCGAN_model(object):
     def generator_upsample(self):
         if self.G:
             return self.G
-        self.G = Sequential()
+        self.gen = Sequential()
         dropout = 0.4
         depth = 64+64+64+64
         dim = int(self.img_rows/4.0)
         # In: 100
         # Out: dim x dim x depth
-        self.G.add(Dense(dim*dim*depth, input_dim=100))
-        self.G.add(BatchNormalization(momentum=0.9))
-        self.G.add(Activation('relu'))
-        self.G.add(Reshape((dim, dim, depth)))
-        self.G.add(Dropout(dropout))
+        self.gen.add(Dense(dim*dim*depth, input_dim=100))
+        self.gen.add(BatchNormalization(momentum=0.9))
+        self.gen.add(Activation('relu'))
+        self.gen.add(Reshape((dim, dim, depth)))
+        self.gen.add(Dropout(dropout))
 
         # In: dim x dim x depth
         # Out: 2*dim x 2*dim x depth/2
-        self.G.add(UpSampling2D())
-        self.G.add(Conv2DTranspose(int(depth/2), 5, padding='same'))
-        self.G.add(BatchNormalization(momentum=0.9))
-        self.G.add(Activation('relu'))
+        self.gen.add(UpSampling2D())
+        self.gen.add(Conv2DTranspose(int(depth/2), 5, padding='same'))
+        self.gen.add(BatchNormalization(momentum=0.9))
+        self.gen.add(Activation('relu'))
 
-        self.G.add(UpSampling2D())
-        self.G.add(Conv2DTranspose(int(depth/4), 5, padding='same'))
-        self.G.add(BatchNormalization(momentum=0.9))
-        self.G.add(Activation('relu'))
+        self.gen.add(UpSampling2D())
+        self.gen.add(Conv2DTranspose(int(depth/4), 5, padding='same'))
+        self.gen.add(BatchNormalization(momentum=0.9))
+        self.gen.add(Activation('relu'))
 
-        self.G.add(Conv2DTranspose(int(depth/8), 5, padding='same'))
-        self.G.add(BatchNormalization(momentum=0.9))
-        self.G.add(Activation('relu'))
+        self.gen.add(Conv2DTranspose(int(depth/8), 5, padding='same'))
+        self.gen.add(BatchNormalization(momentum=0.9))
+        self.gen.add(Activation('relu'))
 
         # Out: 28 x 28 x 1 grayscale image [0.0,1.0] per pix
-        self.G.add(Conv2DTranspose(self.channel, 5, padding='same'))
-        self.G.add(Activation('sigmoid'))
+        self.gen.add(Conv2DTranspose(self.channel, 5, padding='same'))
+        self.gen.add(Activation('sigmoid'))
+
+        if auxilary:
+            latent_vector = Input(shape=(100, ))
+            image_class = Input(shape= (1,))
+
+            class_embedding = Embedding(10,100)(image_class)
+            class_embedding = Flatten()(class_embedding)
+            h = multiply([latent_vector, class_embedding])
+
+            fake_im = generator(h)
+
+            self.G = Model(input = [latent_vector, image_class], output = fake_im)
+        else:
+            self.G = self.gen
 
         self.G.summary()
         return self.G
@@ -165,12 +190,13 @@ class DCGAN_model(object):
         return self.AM
 
 class DCGAN_trainer(object):
-    def __init__(self, img_rows=32, img_cols=32, channel=3, dataset="CIFAR", upsample = False):
+    def __init__(self, img_rows=32, img_cols=32, channel=3, dataset="CIFAR", upsample = False, auxilary = False):
         self.img_rows = img_rows
         self.img_cols = img_cols
         self.channel = channel
         self.dataset = dataset
         self.upsample = upsample
+        self.auxilary = auxilary
 
         if self.dataset == "CIFAR":
             print("Training on CIFAR-10 dataset")
@@ -190,7 +216,7 @@ class DCGAN_trainer(object):
         else:
             print("Unknown dataset")
 
-        self.DCGAN_model = DCGAN_model(img_rows=self.img_rows, img_cols=self.img_cols, channel=self.channel, upsample = self.upsample)
+        self.DCGAN_model = DCGAN_model(img_rows=self.img_rows, img_cols=self.img_cols, channel=self.channel, upsample = self.upsample, auxilary = self.auxilary)
         self.discriminator =  self.DCGAN_model.discriminator_model()
         self.adversarial = self.DCGAN_model.adversarial_model()
         if upsample == True:
@@ -271,6 +297,8 @@ def get_args():
         help = "Plot loss and accuracy and weights of first layer")
     parser.add_argument("-d", "--dataset", dest = "dataset", help = "choose training dataset")
     parser.add_argument("--upsample", dest = "upsample", action = "store_true", help = "if True, uses UpSample2D Layers additional to transpose convolutions.")
+    parser.add_argument("-a", "--auxilary", dest = "auxilary", action "store_true", help = "use AC-GAN")
+
 
     args = parser.parse_args()
     return args
@@ -286,6 +314,7 @@ if __name__ == '__main__':
     visualize = args.visualize
     dataset = args.dataset
     upsample = args.upsample
+    auxilary = args.auxilary
 
     if dataset == "MNIST":
         rows = 28
@@ -300,7 +329,12 @@ if __name__ == '__main__':
     else:
         print("Please provide either \"MNIST\" or \"CIFAR\" as dataset")
 
-    dcgan = DCGAN_trainer(rows, cols, channel, dataset = dataset, upsample=upsample)
+    if not upsample and auxilary:
+        # TODO: Add AC-GAN for without upsampling
+        auxilary = False
+        print("AC-GAN currently only supported for upsampling network")
+
+    dcgan = DCGAN_trainer(rows, cols, channel, dataset = dataset, upsample=upsample, auxilary = auxilary)
     dcgan.train(train_steps=10000, batch_size=256, save_interval=100)
     dcgan.plot_images(fake=True)
     dcgan.plot_images(fake=False, save2file=True)
