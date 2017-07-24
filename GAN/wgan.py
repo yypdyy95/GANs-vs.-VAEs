@@ -1,7 +1,7 @@
 import image_parser as parse
 # uncomment this for use on ssh
-import matplotlib
-matplotlib.use("ps")
+#import matplotlib
+#matplotlib.use("ps")
 import numpy as np
 import matplotlib.pyplot as plt
 from keras.models import load_model, Model
@@ -13,54 +13,55 @@ from keras.utils.generic_utils import Progbar
 from networks import *
 import utilities as util
 from os.path import isfile
-K.set_image_data_format('channels_first') # using theano dimension ordering
 import tensorflow as tf
 from keras.datasets import cifar10
-
+import argparse
+from scipy.signal import medfilt
 
 '''
 Hyperparameters:
 '''
+
+
+parser = argparse.ArgumentParser()
+
+parser.add_argument('--dataset', required=True, help='cifar10 | celeb | char74k | cats | dogs ')
+parser.add_argument('--batch_size', type=int, default=64, help='input batch size')
+parser.add_argument('--image_dim', type=int, default=64, help='the height / width of the input image to network')
+parser.add_argument('--num_of_imgs', type=int, default=100000)
+parser.add_argument('--channels', type=int, default=3, help='input image channels')
+parser.add_argument('--nz', type=int, default=100, help='size of the latent z vector')
+parser.add_argument('--g_filters', type=int, default=64)
+parser.add_argument('--d_filters', type=int, default=64)
+parser.add_argument('--filtersize', type=int, default=4)
+parser.add_argument('--epochs', type=int, default=25, help='number of epochs to train for')
+parser.add_argument('--lr_D', type=float, default=0.00005, help='learning rate for Critic, default=0.00005')
+parser.add_argument('--lr_G', type=float, default=0.00005, help='learning rate for Generator, default=0.00005')
+parser.add_argument('--clamp_lower', type=float, default=-0.01)
+parser.add_argument('--clamp_upper', type=float, default=0.01)
+parser.add_argument('--Diters', type=int, default=3, help='number of D iters per each G iter, default = 3')
+parser.add_argument('--noBN', action='store_true', help='use batchnorm or not in Discriminator')
+parser.add_argument('--d_dropout', type = float, default = 0., help='dropout rate for discriminator')
+parser.add_argument('--g_dropout', type = float, default = 0., help='dropout rate for generator')
+parser.add_argument('--deconv', type=bool, default=True)
+parser.add_argument('--load_model', type=bool, default=False)
+parser.add_argument('--output_folder',  default="./output/")
+opt = parser.parse_args()
+
+
 '''
 general parameters:
 '''
-dataset = 'cats'           # cats, dogs or celeb dataset
-load = True                 # load saved model
-image_dim  = 64             # image.shape = (3,image_dim, image_dim)
 
-'''
-Network parameters
-'''
-g_dropout_rate = 0.3        # dropout rate for generator
-d_dropout_rate = 0.3        # dropout rate for discriminator
-g_filters = 128             # number of filters of first layer of generator
-d_filters = 128             # number of filters of  of discriminator
-filtersize = 4              # size of Conv filters
-dilation_rate = 1           # dilation factor for dilated Connvolutions
 d_batchnorm = False         # use BatchNormalization in discriminator
 # according to improved WGAN paper, BatchNorm shouldn't be applied for WGANs
-out_dim = 1                 # output dimension for discriminator network
-d_l2_regularisation = 5e-3  # l2 kernel_regularizer for discriminator
-g_l2_regularisation = 5e-3  # l2 kernel_regularizer for generator
-deconv = True               # using strided Conv2DTranspose for Upsampling, else UpSampling2D
-opt_d = RMSprop(5e-5)#Adam(lr = 1e-4, beta_1 = 0.5)
-opt_g = RMSprop(5e-5)#Adam(lr = 2e-4, beta_1 = 0.5)
-                            # optimizers
-clamp_weights = False
-clamp_lower, clamp_upper = -0.5, 0.5
 
 '''
 Training parameters
 '''
 
-pretrain_eps = 0            # number of pretraining epochs for discriminator
-num_of_imgs = 12450          # number of images used for training
-batch_size = 128            # batch size for training
-iterations = 1000           # number of iterations of training process
 
-disc_train_eps = 1          # how often each network will be
-gen_train_epochs = 1        # trained in one epoch
-add_noise = False            # add noise to images, with decreasing magnitude
+add_noise = False           # add noise to images, with decreasing magnitude
 mu = 0                      # mean for noise input to generator
 sigma = 0.5                 # stddev for noise input
 
@@ -69,36 +70,48 @@ plotting parameters
 '''
 refresh_interval = 5        # interval for refreshing of plots
 save_images = True          # save generated images after every 50th iteration
-img_folder = "./output/"    # "C:/Users/Philip/OneDrive/Dokumente/gan_imgs/"
-                            # folder where images will be saved in
+
 plot_weights = False        # plot weights of some conv layers during training
 
 
-images_train = parse.load_data_set(dataset,image_dim = image_dim)
-images_train = ((images_train - 127.5 ) / 127.5)[:num_of_imgs]
 
+
+opt_d = RMSprop(opt.lr_D)       #Adam(lr = 1e-4, beta_1 = 0.5)
+opt_g = RMSprop(opt.lr_G)       #Adam(lr = 2e-4, beta_1 = 0.5)
+                            # optimizers
+
+
+if opt.dataset == 'cifar10':
+  (images_train, classes) , (_,_) = cifar10.load_data()
+  opt.image_dim = 32
+else:
+  images_train , classes = parse.load_data_set_classes(opt.dataset,image_dim = opt.image_dim)[:opt.num_of_imgs]
+
+images_train = ((images_train - 127.5 ) / 127.5)
+if images_train.shape[0] < opt.num_of_imgs:
+  opt.num_of_imgs = images_train.shape[0]
+  
 loss = wasserstein
-acc = binary_accuracy_
 
-disc_name = dataset + "w_" + util.get_model_name(discriminator = True, filters = d_filters, dropout_rate = d_dropout_rate,dilation_rate = dilation_rate, batch_norm = d_batchnorm, out_dim = out_dim, filtersize = filtersize)
-gen_name = dataset +"w_" + util.get_model_name(discriminator = False, deconv = deconv, filters = g_filters, dropout_rate = g_dropout_rate, dilation_rate = dilation_rate,out_dim = out_dim, filtersize = filtersize)
+disc_name = opt.dataset + "w_" + util.get_model_name(discriminator = True, filters = opt.d_filters, dropout_rate = opt.d_dropout, batch_norm = d_batchnorm,  filtersize = opt.filtersize)
+gen_name = opt.dataset +"w_" + util.get_model_name(discriminator = False, deconv = opt.deconv, filters = opt.g_filters, dropout_rate = opt.g_dropout, filtersize = opt.filtersize)
 
 
-if load and isfile("./networks/" + gen_name):
+if opt.load_model and isfile("./networks/" + gen_name):
     generator = load_model("./networks/" + gen_name , custom_objects = {'binary_accuracy_':binary_accuracy_, 'mean_pred':mean_pred, 'min_pred':min_pred})
     discriminator = load_model("./networks/"+ disc_name, custom_objects = {'binary_accuracy_':binary_accuracy_, 'mean_pred':mean_pred, 'min_pred':min_pred})
 
 else:
-    if load and not isfile("./networks/" + gen_name):
+    if opt.load_model and not isfile("./networks/" + gen_name):
         print("couldn't find model. New model will be generated.")
 
-    discriminator = get_discriminator(input_dim = image_dim, filters = d_filters, filtersize = filtersize ,regularisation = d_l2_regularisation, dropout_rate = d_dropout_rate, batch_norm = True, out_dim = out_dim, dilation_rate = dilation_rate, wasserstein = True)
+    discriminator = get_discriminator(input_dim = opt.image_dim, filters = opt.d_filters, filtersize = opt.filtersize ,regularisation = 0., dropout_rate = opt.d_dropout, batch_norm = True,  wasserstein = True)
     discriminator.compile(loss=loss, optimizer=opt_d)
 
-    if deconv:
-        generator = get_deconv_generator(filters = g_filters, image_dim = image_dim, filtersize = filtersize, regularisation = g_l2_regularisation, dropout_rate = g_dropout_rate, dilation_rate=dilation_rate)
+    if opt.deconv:
+        generator = get_deconv_generator(filters = opt.g_filters, image_dim = opt.image_dim, filtersize = opt.filtersize, regularisation = 0., dropout_rate = opt.g_dropout)
     else:
-        generator = get_upSampling_generator(image_dim = image_dim, filters = g_filters, regularisation = g_l2_regularisation, dropout_rate = g_dropout_rate)
+        generator = get_upSampling_generator(image_dim = opt.image_dim, filters = opt.g_filters, regularisation = 0., dropout_rate = opt.g_dropout)
 
 '''
 create generative adversarial network:
@@ -126,12 +139,11 @@ initialize matplotlib windows
 '''
 
 fig1, ax1 = plt.subplots(1,1)
-
 fig2, ax2 = plt.subplots(4,5)
 ax2 = ax2.reshape(-1)
 fig2.set_size_inches(10,9)
 fig1.set_size_inches(10,8)
-plt.subplots_adjust(left=0.04, bottom=0.04, right=0.96, top=0.96, wspace=0.05, hspace=0.05)
+plt.subplots_adjust(left=0.04, bottom=0.04, right=0.96, top=0.96, wspace=0., hspace=0.)
 if plot_weights:
     fig3, ax3 = plt.subplots(2,1)
     ax3 = ax3.reshape(-1)
@@ -146,67 +158,61 @@ if plot_weights:
 '''
 losses = {"d":[], "g":[] }
 
-plot_noise = np.random.normal(mu, sigma, size=[batch_size, 100])
-plot_labels = range(batch_size)
-plot_labels = np.mod(plot_labels, 10)
+plot_noise = np.random.normal(mu, sigma, size=[opt.batch_size, 100])
 
-for it in range(iterations):
+for it in range(opt.epochs):
 
-    print("\niteration ", it+1, " of " , iterations)
+    print("\niteration ", it+1, " of " , opt.epochs)
 
     '''
     first train discriminator:
     	- create fake images with generator, concatenate with real images
     	- fit discriminator on those samples
     '''
-    batches = int(num_of_imgs/batch_size)
+
+    batches = int(opt.num_of_imgs/opt.batch_size)
 
     progress_bar = Progbar(target=batches)
-
-    p = np.random.permutation(num_of_imgs)
+    
+    p = np.random.permutation(opt.num_of_imgs)
     images_train = images_train[p]
 
 
     for i in range(batches):
         progress_bar.update(i)
 
-        noise = np.random.normal(mu, sigma, size=[batch_size, 100])
+        noise = np.random.normal(mu, sigma, size=[opt.batch_size, 100])
 
         images_fake = generator.predict(noise)
 
-        images_batch = images_train[i*batch_size:(i+1)*batch_size,:,:,:]
+        images_batch = images_train[i*opt.batch_size:(i+1)*opt.batch_size,:,:,:]
 
         if add_noise:
             im_noise = np.exp( - it/10) * np.random.normal(0,0.3,size = images_batch.shape )
             images_batch += im_noise
 
-        for i in range(disc_train_eps):
-            d_loss1 = discriminator.train_on_batch(images_batch,-np.ones(batch_size))
-            d_loss2 = discriminator.train_on_batch(images_fake, np.ones(batch_size))
+        for i in range(opt.Diters):
+            d_loss1 = discriminator.train_on_batch(images_batch,-np.ones(opt.batch_size))
+            d_loss2 = discriminator.train_on_batch(images_fake, np.ones(opt.batch_size))
 
         '''
             weight_clipping
         '''
-        if clamp_weights:
-            for l in discriminator.layers:
-                weights = l.get_weights()
-                weights = [np.clip(w, clamp_lower, clamp_upper) for w in weights]
-                l.set_weights(weights)
+   
+        for l in discriminator.layers:
+            weights = l.get_weights()
+            weights = [np.clip(w, opt.clamp_lower, opt.clamp_upper) for w in weights]
+            l.set_weights(weights)
 
-        d_loss = 0.5 * (d_loss1 + d_loss2)#(np.array(d_loss1)+np.array(d_loss2))* 0.5
-
-        noise_tr = np.random.normal(mu, sigma, size=[batch_size, 100])
-        for i in range(gen_train_epochs):
-            g_loss = GAN.train_on_batch(noise_tr, -np.ones(batch_size))
+        d_loss = (d_loss1 + d_loss2)
+        progress_bar.add(d_loss)
+        noise_tr = np.random.normal(mu, sigma, size=[opt.batch_size, 100])
+          
+        g_loss = GAN.train_on_batch(noise_tr, -np.ones(opt.batch_size))
 
         losses["g"].append(g_loss)
-
         losses["d"].append(d_loss)
 
-    #pred = discriminator.predict(images_batch)
-    # uncomment the following to check if training process runs corectly:
-    #print(np.max(GAN.layers[2].layers[1].get_weights()[0] - discriminator.layers[1].get_weights()[0]))
-    #print(np.max(GAN.layers[1].layers[1].get_weights()[0] - generator.layers[1].get_weights()[0]))
     if np.mod(it+1, refresh_interval) == 0:
 
         if plot_weights:
@@ -228,8 +234,8 @@ for it in range(iterations):
         losses_plot_g = np.array(losses['g'])
         losses_plot_d = np.array(losses['d'])
         images_plot = generator.predict(plot_noise)
-        images_plot = np.swapaxes(images_plot, 1,2)
-        images_plot = (np.swapaxes(images_plot, 3,2) + 1) * 127.5
+    
+        images_plot = (images_plot + 1) * 127.5
 
         for i in range(20):
             ax2[i].cla()
@@ -237,18 +243,17 @@ for it in range(iterations):
             ax2[i].axis('off')
 
         ax1.cla()
-        ax1.plot(losses_plot_d, label='discriminitive loss')
-        ax1.plot(losses_plot_g, label='generative loss')
+        ax1.plot(-medfilt(losses_plot_d,101), label='wasserstein estimate')
         ax1.legend()
 
         if save_images:
-            fig2.savefig(img_folder + dataset + str(it) + ".png")
-            fig1.savefig(img_folder + "hist.png")
+            fig2.savefig(opt.output_folder + opt.dataset + str(it) + ".png")
+            fig1.savefig(opt.output_folder + "hist.png")
         plt.pause(0.0000001)
 
-	# save model every 1000 iterations
-    #if np.mod(it+1, 25) == 0:
-    #	discriminator.save("/output/"+"cifar10" + disc_name)
-    #	generator.save("/output/"+ "cifar10"+gen_name)
+	# save model every 1000 opt.epochs
+    if np.mod(it+1, 25) == 0:
+    	discriminator.save("./output/" + disc_name)
+    	generator.save("./output/" + gen_name)
 
 plt.show()
