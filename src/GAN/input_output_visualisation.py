@@ -4,6 +4,8 @@ from keras.models import load_model
 import utilities as util
 from networks import *
 
+
+
 fig , ax = plt.subplots(1,2)
 fig.set_size_inches(12,8)
 
@@ -16,7 +18,7 @@ for layer in model.layers:
 util.visualize_weights(conv_layers[0])
 '''
 
-model = load_model('./example_networks/gen_de_f1024_fs5_o1_d0.5_dil1.h5', custom_objects = {'binary_accuracy_':binary_accuracy_, 'mean_pred':mean_pred, 'min_pred':min_pred})
+model = load_model('./example_networks/gen_de_f512_fs5_o1_d0.5_dil1.h5', custom_objects = {'binary_accuracy_':binary_accuracy_, 'mean_pred':mean_pred, 'min_pred':min_pred})
 #model = load_model('./example_networks/gen_de_f512_fs5_o1_d0.5_dil1.h5', custom_objects = {'binary_accuracy_':binary_accuracy_, 'mean_pred':mean_pred, 'min_pred':min_pred})
 
 noise_0 = np.random.normal(size = (1,100))
