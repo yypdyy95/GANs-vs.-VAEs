@@ -66,9 +66,9 @@ def get_weight_distributions(network, bins = 500):
     #print(all_weights.shape)
 
     return np.array(hists)#np.histogram(all_weights, bins = bins, normed = True)
-    
-    
-    
+
+
+
 def get_model_name(discriminator, filters, filtersize, dropout_rate, batch_norm = False, deconv =False):
     if discriminator:
         name = "dis"
@@ -86,6 +86,3 @@ def get_model_name(discriminator, filters, filtersize, dropout_rate, batch_norm 
 
     name += ".h5"
     return name
-
-    
-    

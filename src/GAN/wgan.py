@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.insert(1, os.path.join(sys.path[0], '../'))
+
 import image_parser as parse
 # uncomment this for use on ssh
 #import matplotlib
@@ -90,7 +94,7 @@ else:
 images_train = ((images_train - 127.5 ) / 127.5)
 if images_train.shape[0] < opt.num_of_imgs:
   opt.num_of_imgs = images_train.shape[0]
-  
+
 loss = wasserstein
 
 disc_name = opt.dataset + "w_" + util.get_model_name(discriminator = True, filters = opt.d_filters, dropout_rate = opt.d_dropout, batch_norm = d_batchnorm,  filtersize = opt.filtersize)
@@ -173,7 +177,7 @@ for it in range(opt.epochs):
     batches = int(opt.num_of_imgs/opt.batch_size)
 
     progress_bar = Progbar(target=batches)
-    
+
     p = np.random.permutation(opt.num_of_imgs)
     images_train = images_train[p]
 
@@ -198,7 +202,7 @@ for it in range(opt.epochs):
         '''
             weight_clipping
         '''
-   
+
         for l in discriminator.layers:
             weights = l.get_weights()
             weights = [np.clip(w, opt.clamp_lower, opt.clamp_upper) for w in weights]
@@ -207,7 +211,7 @@ for it in range(opt.epochs):
         d_loss = (d_loss1 + d_loss2)
         progress_bar.add(d_loss)
         noise_tr = np.random.normal(mu, sigma, size=[opt.batch_size, 100])
-          
+
         g_loss = GAN.train_on_batch(noise_tr, -np.ones(opt.batch_size))
 
         losses["g"].append(g_loss)
@@ -234,7 +238,7 @@ for it in range(opt.epochs):
         losses_plot_g = np.array(losses['g'])
         losses_plot_d = np.array(losses['d'])
         images_plot = generator.predict(plot_noise)
-    
+
         images_plot = (images_plot + 1) * 127.5
 
         for i in range(20):
