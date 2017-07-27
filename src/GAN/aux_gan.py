@@ -1,3 +1,7 @@
+import os
+import sys
+sys.path.insert(1, os.path.join(sys.path[0], '../'))
+
 import image_parser as parse
 # uncomment this for use on ssh
 import matplotlib
