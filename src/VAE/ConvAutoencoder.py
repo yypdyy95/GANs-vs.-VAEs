@@ -1,7 +1,14 @@
+<<<<<<< HEAD
 """
 Implementation of a VAE using Keras and tensorflow.
 """
 
+=======
+'''This script demonstrates how to build a variational autoencoder
+with Keras and deconvolution layers.
+Reference: "Auto-Encoding Variational Bayes" https://arxiv.org/abs/1312.6114
+'''
+>>>>>>> 1b6ca73bab0ace3d50f625a63d2857d7198cd34a
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
