@@ -1,7 +1,7 @@
-'''This script demonstrates how to build a variational autoencoder
-with Keras and deconvolution layers.
-Reference: "Auto-Encoding Variational Bayes" https://arxiv.org/abs/1312.6114
-'''
+"""
+Implementation of a conditioned VAE using Keras and tensorflow.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
@@ -35,8 +35,13 @@ import scipy.misc
 
 dataset = "celeba"
 
+#indicates whether the model shall be generated or loaded.
+#only False is currently supported.
 keep_training = False
 
+"""
+    setup the hyperparameters of the model for the specified data set
+"""
 def setup_hyperparameters():
     global img_rows, img_cols, img_chns, filters, num_conv, latent_dim, intermediate_dim, epsilon_std, epochs, batch_size, nb_conditional_parameters
     if dataset == "celeba":
@@ -110,6 +115,9 @@ if K.image_data_format() == 'channels_first':
 else:
     original_img_size = (img_rows, img_cols, img_chns)
 
+"""
+    loads the images of the data set
+"""
 def load_data():
     global x_train, y_train, x_test, y_test
 
@@ -150,6 +158,9 @@ def load_data():
     x_test = x_test.reshape((x_test.shape[0],) + original_img_size)
 load_data()
 
+"""
+    builds, trains and saves the model
+"""
 def build_train():
     x = Input(batch_shape=(batch_size,) + original_img_size, name="image_input")
     conditional = Input(batch_shape=(batch_size, nb_conditional_parameters), name="conditional_input")
@@ -259,7 +270,7 @@ else:
     print("models loaded")
 
     if keep_training:
-        print("keep_training is not supported.")
+        print("keep_training is not supported at the moment - sorry!")
         """
         print("starting training...")
         vae.fit([x_train, y_train], shuffle=True, epochs=epochs, batch_size=batch_size, validation_data=([x_test, y_test], x_test), verbose=2)
@@ -287,7 +298,7 @@ else:
         print("training finished")
         """
 
-
+#now save some sampled results
 nb_rows = 15
 nb_cols = 15
 

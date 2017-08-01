@@ -1,7 +1,7 @@
-'''This script demonstrates how to build a variational autoencoder
-with Keras and deconvolution layers.
-Reference: "Auto-Encoding Variational Bayes" https://arxiv.org/abs/1312.6114
-'''
+"""
+Implementation of a VAE using Keras and tensorflow.
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm
@@ -29,8 +29,12 @@ from keras.datasets import mnist, cifar10
 from keras.models import load_model
 import os
 
+#set the desired data set
 dataset = "mnist"
 
+"""
+    setup the hyperparameters of the model for the specified data set
+"""
 def setup_hyperparameters():
     global img_rows, img_cols, img_chns, filters, num_conv, latent_dim, intermediate_dim, epsilon_std, epochs, batch_size
     if dataset == "celeba":
@@ -100,6 +104,9 @@ if K.image_data_format() == 'channels_first':
 else:
     original_img_size = (img_rows, img_cols, img_chns)
 
+"""
+    loads the images of the data set
+"""
 def load_data():
     global x_train, y_train, x_test, y_test
 
@@ -129,8 +136,9 @@ def load_data():
     x_test = x_test.reshape((x_test.shape[0],) + original_img_size)
 load_data()
 
-
-
+"""
+    builds, trains and saves the model
+"""
 def build_train():
     x = Input(batch_shape=(batch_size,) + original_img_size)
     conv_1 = Conv2D(img_chns, kernel_size=(2, 2), padding='same', activation='relu')(x)
@@ -234,6 +242,7 @@ else:
     generator = load_model("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim))
     vae = load_model("./output/generator_uncon_{0}_{1}.h5".format(dataset, latent_dim))
 
+#save some samples results now
 nb_rows = 50
 nb_cols = 50
 
